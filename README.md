@@ -12,3 +12,5 @@ Shark 0.7.0 requires:
 * OpenJDK 7 or Oracle HotSpot JDK 7 or Oracle HotSpot JDK 6u23+
 
 ## For current documentation, see the [Shark Project Wiki](https://github.com/amplab/shark/wiki)
+
+This is DP branch of Shark from offical v0.7.0 tag
