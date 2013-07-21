@@ -20,9 +20,7 @@ package shark.parse
 import java.lang.reflect.Method
 import java.util.ArrayList
 import java.util.{List => JavaList}
-
 import scala.collection.JavaConversions._
-
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.metastore.api.{FieldSchema, MetaException}
@@ -34,13 +32,12 @@ import org.apache.hadoop.hive.ql.optimizer.Optimizer
 import org.apache.hadoop.hive.ql.parse._
 import org.apache.hadoop.hive.ql.plan._
 import org.apache.hadoop.hive.ql.session.SessionState
-
 import shark.{CachedTableRecovery, LogHelper, SharkConfVars, SharkEnv, Utils}
 import shark.execution.{HiveOperator, Operator, OperatorFactory, ReduceSinkOperator, SparkWork,
   TerminalOperator}
 import shark.memstore2.{CacheType, ColumnarSerDe, MemoryMetadataManager}
-
 import spark.storage.StorageLevel
+import org.apache.hadoop.hive.ql.hooks.ReadEntity
 
 
 /**
@@ -265,6 +262,10 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
 
       val fetchTask = TaskFactory.get(fetchWork, conf).asInstanceOf[FetchTask]
       setFetchTask(fetchTask)
+      
+      //add src table to inputs for authorization
+      val tables = qb.getMetaData().getAliasToTable().values()
+      tables.map(table => inputs.add(new ReadEntity(table)))
 
     } else {
       // Configure MoveTasks for table updates (e.g. CTAS, INSERT).
