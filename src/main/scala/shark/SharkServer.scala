@@ -28,6 +28,7 @@ import java.util.concurrent.CountDownLatch
 
 import scala.annotation.tailrec
 import scala.concurrent.ops.spawn
+import scala.collection.JavaConversions._
 
 import org.apache.commons.logging.LogFactory
 import org.apache.commons.cli.OptionBuilder
@@ -35,6 +36,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hive.common.LogUtils
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.metastore.api.Schema
+import org.apache.hadoop.hive.metastore.TServerSocketKeepAlive
 import org.apache.hadoop.hive.ql.Driver
 import org.apache.hadoop.hive.ql.processors.CommandProcessorFactory
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse
@@ -44,6 +46,7 @@ import org.apache.hadoop.hive.service.HiveServer.HiveServerHandler
 import org.apache.hadoop.hive.service.HiveServer.ThriftHiveProcessorFactory
 import org.apache.hadoop.hive.service.HiveServerException
 import org.apache.hadoop.hive.service.ThriftHive
+import org.apache.hadoop.hive.shims.ShimLoader
 import org.apache.thrift.TProcessor
 import org.apache.thrift.protocol.TBinaryProtocol
 import org.apache.thrift.server.TThreadPoolServer
@@ -68,6 +71,10 @@ object SharkServer extends LogHelper {
 
   var serverTransport: TServerSocket = _
 
+  var hfactory: ThriftHiveProcessorFactory = null
+
+  var transFactory: TTransportFactory = null
+
   def main(args: Array[String]) {
 
     val cli = new SharkServerCliOptions
@@ -77,22 +84,47 @@ object SharkServer extends LogHelper {
     // any log specific settings via hiveconf will be ignored.
     val hiveconf: Properties = cli.addHiveconfToSystemProperties()
 
+    val conf: HiveConf = new HiveConf()
+
+    hiveconf.entrySet().foreach { item: java.util.Map.Entry[Object, Object] =>
+      conf.set(item.getKey().asInstanceOf[String], item.getValue().asInstanceOf[String])
+    }
+
     // From Hive: It is critical to do this here so that log4j is reinitialized
     // before any of the other core hive classes are loaded
     LogUtils.initHiveLog4j()
 
     val latch = new CountDownLatch(1)
-    serverTransport = new TServerSocket(cli.port)
 
-    val hfactory = new ThriftHiveProcessorFactory(null, new HiveConf()) {
-      override def getProcessor(t: TTransport) =
-        new ThriftHive.Processor(new GatedSharkServerHandler(latch))
+    if (conf.getBoolVar(HiveConf.ConfVars.SERVER_TCP_KEEP_ALIVE)) {
+      serverTransport = new TServerSocketKeepAlive(cli.port)
+    } else {
+      serverTransport = new TServerSocket(cli.port, 1000 * conf.getIntVar(HiveConf.ConfVars.SERVER_READ_SOCKET_TIMEOUT))
+    }
+
+    if (HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVESERVER_USE_THRIFT_SASL)) {
+      val saslServer = ShimLoader.getHadoopThriftAuthBridge().createServer(
+        conf.getVar(HiveConf.ConfVars.HIVESERVER_KERBEROS_KEYTAB_FILE),
+        conf.getVar(HiveConf.ConfVars.HIVESERVER_KERBEROS_PRINCIPAL))
+      saslServer.startDelegationTokenSecretManager(conf);
+
+      transFactory = saslServer.createTransportFactory();
+      hfactory = new ThriftHiveProcessorFactory(null, conf, saslServer) {
+        override def getProcessor(t: TTransport) =
+          saslServer.wrapProcessor(new ThriftHive.Processor(new GatedSharkServerHandler(latch)))
+      }
+    } else {
+      transFactory = new TTransportFactory();
+      hfactory = new ThriftHiveProcessorFactory(null, conf, null) {
+        override def getProcessor(t: TTransport) =
+          new ThriftHive.Processor(new GatedSharkServerHandler(latch))
+      }
     }
     val ttServerArgs = new TThreadPoolServer.Args(serverTransport)
       .processorFactory(hfactory)
       .minWorkerThreads(cli.minWorkerThreads)
       .maxWorkerThreads(cli.maxWorkerThreads)
-      .transportFactory(new TTransportFactory())
+      .transportFactory(transFactory)
       .protocolFactory(new TBinaryProtocol.Factory())
     server = new TThreadPoolServer(ttServerArgs)
 
