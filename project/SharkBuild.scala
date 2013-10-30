@@ -44,6 +44,7 @@ object SharkBuild extends Build {
   val YARN_ENABLED = env("SHARK_YARN").getOrElse("false").toBoolean
 
   // Whether to build Shark with Tachyon jar.
+  // Hive 0.10+ uses newer Thrift versions that conflict with Tachyon's
   val TACHYON_ENABLED = false
 
   lazy val root = Project(
