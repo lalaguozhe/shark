@@ -19,7 +19,7 @@ THISSERVICE=cli
 export SERVICE_LIST="${SERVICE_LIST}${THISSERVICE} "
 
 cli() {
-  echo "Starting the Shark Command Line Client"
+  echo "Starting the Shark Command Line Client" 1>&2
   exec $FWDIR/run shark.SharkCliDriver "$@"
 }
 
