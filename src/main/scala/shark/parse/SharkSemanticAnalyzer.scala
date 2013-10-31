@@ -41,6 +41,7 @@ import shark.{CachedTableRecovery, LogHelper, SharkConfVars, SharkEnv, SharkOpti
 import shark.execution.{HiveOperator, Operator, OperatorFactory, RDDUtils, ReduceSinkOperator,
   SparkWork, TerminalOperator}
 import shark.memstore2.{CacheType, ColumnarSerDe, MemoryMetadataManager}
+import org.apache.hadoop.hive.ql.hooks.ReadEntity
 
 
 /**
@@ -347,6 +348,10 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
         new DDLWork(getInputs, getOutputs, crtTblDesc),conf).asInstanceOf[DDLTask]
       rootTasks.head.addDependentTask(crtTblTask)
     }
+    
+      //add src table to inputs for authorization
+      val tables = qb.getMetaData().getAliasToTable().values()
+      tables.map(table => inputs.add(new ReadEntity(table)))
   }
 }
 
