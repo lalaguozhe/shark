@@ -1,3 +1,11 @@
+# Shark DianPing branch 
+
+This is an internal version of Shark for DianPing inc. which is forked from amplab Shark. 
+Latest version is on branch cosmos-shark-0.8, based on amplab tag v0.8.0 and merged commits from amplab hive0.11 branch.
+We also fixed a few bugs, see more [here](https://github.com/dianping/shark/commits/cosmos-shark-0.8) 
+
+
+------------------------------
 # Shark (Hive on Spark)
 
 Shark is a large-scale data warehouse system for Spark designed to be compatible with
