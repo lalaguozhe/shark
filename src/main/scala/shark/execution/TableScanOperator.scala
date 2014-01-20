@@ -261,7 +261,6 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
       val partition = part.asInstanceOf[Partition]
       val partDesc = Utilities.getPartitionDesc(partition)
       val tableDesc = partDesc.getTableDesc()
-      val partProps = partDesc.getProperties()
 
       val ifc = partition.getInputFormatClass
         .asInstanceOf[java.lang.Class[InputFormat[Writable, Writable]]]
@@ -270,9 +269,12 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
       val serializedHconf = XmlSerializer.serialize(localHconf, localHconf)
       val partRDD = parts.mapPartitions { iter =>
         val hconf = XmlSerializer.deserialize(serializedHconf).asInstanceOf[HiveConf]
+        val deserializer = partDesc.getDeserializerClass().newInstance()
+        deserializer.initialize(hconf, partDesc.getProperties())
 
         // Get partition field info
         val partSpec = partDesc.getPartSpec()
+        val partProps = partDesc.getProperties()
 
         val partCols = partProps.getProperty(META_TABLE_PARTITION_COLUMNS)
         // Partitioning keys are delimited by "/"
@@ -287,47 +289,52 @@ class TableScanOperator extends TopOperator[HiveTableScanOperator] with HiveTopO
           }
         }
 
-        val partSerde = partDesc.getDeserializerClass().newInstance()
-        val tableSerde = tableDesc.getDeserializerClass().newInstance()
-        partSerde.initialize(hconf, partProps)
-        tableSerde.initialize(hconf, tableDesc.getProperties())
-
-        // Table OI may not be of same type as partition OI
-        val tblConvertedOI = ObjectInspectorConverters.getConvertedOI(
-          partSerde.getObjectInspector(), tableSerde.getObjectInspector())
-        .asInstanceOf[StructObjectInspector]
-
-        val partTblObjectInspectorConverter = ObjectInspectorConverters.getConverter(
-          partSerde.getObjectInspector(), tblConvertedOI);
+//        val partSerde = partDesc.getDeserializerClass().newInstance()
+//        val tableSerde = tableDesc.getDeserializerClass().newInstance()
+//        partSerde.initialize(hconf, partProps)
+//        tableSerde.initialize(hconf, tableDesc.getProperties())
+//
+//        // Table OI may not be of same type as partition OI
+//        val tblConvertedOI = ObjectInspectorConverters.getConvertedOI(
+//          partSerde.getObjectInspector(), tableSerde.getObjectInspector())
+//        .asInstanceOf[StructObjectInspector]
+//
+//        val partTblObjectInspectorConverter = ObjectInspectorConverters.getConverter(
+//          partSerde.getObjectInspector(), tblConvertedOI);
  
         // Deserialize each row
         val rowWithPartArr = new Array[Object](2)
         // Map each tuple to a row object
         iter.map { value =>
-          val deserializedRow = {
-
-            // If partition schema does not match table schema, update the row to match
-            val convertedRow = partTblObjectInspectorConverter.convert(partSerde.deserialize(value))
-
-            // If conversion was performed, convertedRow will be a standard Object, but if 
-            // conversion wasn't necessary, it will still be lazy. We can't have both across 
-            // partitions, so we serialize and deserialize again to make it lazy.
-            if (tableSerde.isInstanceOf[OrcSerde]) {
-              convertedRow
-            } else {
-              convertedRow match {
-                case _: LazyStruct => convertedRow
-                case _ => tableSerde.deserialize(
-                  tableSerde.asInstanceOf[Serializer].serialize(
-                    convertedRow, tblConvertedOI))
-              }
+                  val deserializedRow = deserializer.deserialize(value) // LazyStruct
+                  rowWithPartArr.update(0, deserializedRow)
+                  rowWithPartArr.update(1, partValues)
+                  rowWithPartArr.asInstanceOf[Object]
             }
-          }
-
-          rowWithPartArr.update(0, deserializedRow)
-          rowWithPartArr.update(1, partValues)
-          rowWithPartArr.asInstanceOf[Object]
-        }
+//        iter.map { value =>
+//          val deserializedRow = {
+//
+//            // If partition schema does not match table schema, update the row to match
+//            val convertedRow = partTblObjectInspectorConverter.convert(partSerde.deserialize(value))
+//
+//            // If conversion was performed, convertedRow will be a standard Object, but if 
+//            // conversion wasn't necessary, it will still be lazy. We can't have both across 
+//            // partitions, so we serialize and deserialize again to make it lazy.
+//            if (tableSerde.isInstanceOf[OrcSerde]) {
+//              convertedRow
+//            } else {
+//              convertedRow match {
+//                case _: LazyStruct => convertedRow
+//                case _ => tableSerde.deserialize(
+//                  tableSerde.asInstanceOf[Serializer].serialize(
+//                    convertedRow, tblConvertedOI))
+//              }
+//            }
+//          }
+//          rowWithPartArr.update(0, deserializedRow)
+//          rowWithPartArr.update(1, partValues)
+//          rowWithPartArr.asInstanceOf[Object]
+//        }
       }
       rdds(i) = partRDD.asInstanceOf[RDD[Any]]
       i += 1
