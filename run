@@ -87,6 +87,8 @@ for jar in `find $SHARK_HOME/lib_managed/bundles -name '*jar'`; do
   SPARK_CLASSPATH+=:$jar
 done
 
+SPARK_CLASSPATH+=:$HIVE_CONF_DIR
+
 # Add Hive jars.
 for jar in `find $HIVE_HOME/lib -name '*jar'`; do
   # Ignore the logging library since it has already been included with the Spark jar.
@@ -95,7 +97,6 @@ for jar in `find $HIVE_HOME/lib -name '*jar'`; do
   fi
 done
 
-SPARK_CLASSPATH+=:$HIVE_CONF_DIR
 
 # Build up Shark's jar or classes.
 SHARK_CLASSES="$SHARK_HOME/target/scala-$SCALA_VERSION/classes"
