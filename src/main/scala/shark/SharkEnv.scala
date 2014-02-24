@@ -92,6 +92,7 @@ object SharkEnv extends LogHelper {
   executorEnvVars.put("SPARK_MEM", getEnv("SPARK_MEM"))
   executorEnvVars.put("SPARK_CLASSPATH", getEnv("SPARK_CLASSPATH"))
   executorEnvVars.put("HADOOP_HOME", getEnv("HADOOP_HOME"))
+  executorEnvVars.put("LD_LIBRARY_PATH", getEnv("LD_LIBRARY_PATH"))
   executorEnvVars.put("JAVA_HOME", getEnv("JAVA_HOME"))
   executorEnvVars.put("MESOS_NATIVE_LIBRARY", getEnv("MESOS_NATIVE_LIBRARY"))
   executorEnvVars.put("TACHYON_MASTER", getEnv("TACHYON_MASTER"))
