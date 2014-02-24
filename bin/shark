@@ -57,7 +57,7 @@ for j in $SERVICE_LIST ; do
     TORUN=${j}$HELP
   fi
 done
-echo "$@"
+echo "$@" 1>&2
 if [ "$TORUN" = "" ] ; then
   echo "Service $SERVICE not found"
   echo "Available Services: $SERVICE_LIST"
