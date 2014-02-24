@@ -38,6 +38,7 @@ import org.apache.hadoop.hive.ql.optimizer.Optimizer
 import org.apache.hadoop.hive.ql.parse._
 import org.apache.hadoop.hive.ql.plan._
 import org.apache.hadoop.hive.ql.session.SessionState
+import org.apache.hadoop.hive.ql.hooks.ReadEntity
 
 import shark.{LogHelper, SharkConfVars, SharkEnv, SharkOptimizer, Utils}
 import shark.execution.{HiveDesc, Operator, OperatorFactory, RDDUtils, ReduceSinkOperator}
@@ -409,6 +410,9 @@ class SharkSemanticAnalyzer(conf: HiveConf) extends SemanticAnalyzer(conf) with 
         new DDLWork(getInputs, getOutputs, crtTblDesc),conf).asInstanceOf[DDLTask]
       rootTasks.head.addDependentTask(crtTblTask)
     }
+    //add src table to inputs for authorization
+    val tables = qb.getMetaData().getAliasToTable().values()
+    tables.map(table => inputs.add(new ReadEntity(table)))
   }
 
   def analyzeCreateTable(rootAST: ASTNode, queryBlock: QueryBlock): Option[ASTNode] = {
