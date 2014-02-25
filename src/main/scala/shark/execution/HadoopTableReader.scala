@@ -168,44 +168,53 @@ class HadoopTableReader(@transient _tableDesc: TableDesc, @transient _localHConf
 
       val hivePartitionRDD = createHadoopRdd(tableDesc, inputPathStr, ifc)
       hivePartitionRDD.mapPartitions { iter =>
-        val partSerDe = partSerDeClass.newInstance()
-        val tableSerDe = tableSerDeClass.newInstance()
-        val hconf = broadcastedHiveConf.value.value
-        partSerDe.initialize(hconf, partProps)
-        tableSerDe.initialize(hconf, tableProps)
-
-        val tblConvertedOI = ObjectInspectorConverters.getConvertedOI(
-          partSerDe.getObjectInspector(), tableSerDe.getObjectInspector())
-          .asInstanceOf[StructObjectInspector]
-        val partTblObjectInspectorConverter = ObjectInspectorConverters.getConverter(
-          partSerDe.getObjectInspector(), tblConvertedOI)
+          val hconf = broadcastedHiveConf.value.value
+          val deserializer = partDesc.getDeserializerClass().newInstance()
+          deserializer.initialize(hconf, partDesc.getProperties())
+//        val partSerDe = partSerDeClass.newInstance()
+//        val tableSerDe = tableSerDeClass.newInstance()
+//        val hconf = broadcastedHiveConf.value.value
+//        partSerDe.initialize(hconf, partProps)
+//        tableSerDe.initialize(hconf, tableProps)
+//
+//        val tblConvertedOI = ObjectInspectorConverters.getConvertedOI(
+//          partSerDe.getObjectInspector(), tableSerDe.getObjectInspector())
+//          .asInstanceOf[StructObjectInspector]
+//        val partTblObjectInspectorConverter = ObjectInspectorConverters.getConverter(
+//          partSerDe.getObjectInspector(), tblConvertedOI)
         val rowWithPartArr = new Array[Object](2)
         // Map each tuple to a row object
-        iter.map { value =>
-          val deserializedRow = {
-
-            // If partition schema does not match table schema, update the row to match
-            val convertedRow = partTblObjectInspectorConverter.convert(partSerDe.deserialize(value))
-
-            // If conversion was performed, convertedRow will be a standard Object, but if
-            // conversion wasn't necessary, it will still be lazy. We can't have both across
-            // partitions, so we serialize and deserialize again to make it lazy.
-            if (tableSerDe.isInstanceOf[OrcSerde]) {
-              convertedRow
-            } else {
-              convertedRow match {
-                case _: LazyStruct => convertedRow
-                case _: HiveColumnarStruct => convertedRow
-                case _ => tableSerDe.deserialize(
-                  tableSerDe.asInstanceOf[Serializer].serialize(
-                    convertedRow, tblConvertedOI))
-              }
-            }
+//        iter.map { value =>
+//          val deserializedRow = {
+//
+//            // If partition schema does not match table schema, update the row to match
+//            val convertedRow = partTblObjectInspectorConverter.convert(partSerDe.deserialize(value))
+//
+//            // If conversion was performed, convertedRow will be a standard Object, but if
+//            // conversion wasn't necessary, it will still be lazy. We can't have both across
+//            // partitions, so we serialize and deserialize again to make it lazy.
+//            if (tableSerDe.isInstanceOf[OrcSerde]) {
+//              convertedRow
+//            } else {
+//              convertedRow match {
+//                case _: LazyStruct => convertedRow
+//                case _: HiveColumnarStruct => convertedRow
+//                case _ => tableSerDe.deserialize(
+//                  tableSerDe.asInstanceOf[Serializer].serialize(
+//                    convertedRow, tblConvertedOI))
+//              }
+//            }
+//          }
+//          rowWithPartArr.update(0, deserializedRow)
+//          rowWithPartArr.update(1, partValues)
+//          rowWithPartArr.asInstanceOf[Object]
+//        }
+          iter.map { value =>
+            val deserializedRow = deserializer.deserialize(value) // LazyStruct
+            rowWithPartArr.update(0, deserializedRow)
+            rowWithPartArr.update(1, partValues)
+            rowWithPartArr.asInstanceOf[Object]
           }
-          rowWithPartArr.update(0, deserializedRow)
-          rowWithPartArr.update(1, partValues)
-          rowWithPartArr.asInstanceOf[Object]
-        }
       }
     }.toSeq
     // Even if we don't use any partitions, we still need an empty RDD
