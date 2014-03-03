@@ -102,6 +102,13 @@ object ASTRewriteUtil extends LogHelper {
     }
     false
   }
+  
+  private def hasLimitFoundInLastChild(nodes: JavaList[ASTNode]): Boolean = {
+    if (nodes.length > 0 && nodes.get(nodes.length - 1).getToken.getType == HiveParser.TOK_LIMIT) {
+       return true
+    }
+    false
+  }
 
   /** Returns all TOK_QUERY nodes found using breadth-first traversal, including `rootAstNode`. */
   private def findQueryNodes(rootAstNode: ASTNode): Seq[ASTNode] = {
@@ -156,6 +163,7 @@ object ASTRewriteUtil extends LogHelper {
         // TOK_QUERY always has two children, TOK_FROM and TOK_INSERT, in order.
         val (fromClause, insertStmt) = (rootQueryChildren.get(0), rootQueryChildren.get(1))
         val insertStmtChildren = getChildren(insertStmt)
+        
         if (insertStmtChildren.size >= 2 && !hasGroupByInChildren(insertStmtChildren)) {
           // The subtree starting at TOK_INSERT has this structure (parenthesis indicate children):
           // TOK_INSERT (TOK_DESTINATION ... ) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTIONDI ... )))
@@ -182,6 +190,7 @@ object ASTRewriteUtil extends LogHelper {
             reorderCountDistinctToGroupBy(
               rootAstNode,
               fromClause,
+              insertStmt,
               destination,
               selectExpr,
               stmtClauses,
@@ -247,10 +256,23 @@ object ASTRewriteUtil extends LogHelper {
   private def reorderCountDistinctToGroupBy(
     rootQuery: ASTNode,
     fromClause: ASTNode,
+    insertClause: ASTNode,
     destination: ASTNode,
     selectExpr: ASTNode,
     stmtClauses: Seq[ASTNode],
     queryId: Int): ASTNode = {
+    var limitASTNode: Option[ASTNode] = None
+    var stmtClausesWithouLimitNode: Seq[ASTNode] = stmtClauses.take(stmtClauses.length)
+    
+    if (hasLimitFoundInLastChild(stmtClauses)) {
+      limitASTNode = Some(stmtClauses.last)
+      stmtClausesWithouLimitNode = stmtClauses.take(stmtClauses.length - 1)
+    }
+    
+    if (!limitASTNode.isEmpty) {
+      insertClause.addChildren(Seq(limitASTNode.get))
+    }
+    
     // Construct the subtree starting at the TOK_INSERT child of `rootQuery`.
 
     // Separate the text node containing the distinct function name from the function arguments.
@@ -282,14 +304,14 @@ object ASTRewriteUtil extends LogHelper {
     val selectDistinctStmt = selectDINode(selectDistinctExprs)
 
     // Add the TOK_DESTINATION and TOK_SELECTDI subtrees as the children of the TOK_INSERT node.
-    val insertStmt = insertNode(Seq(tmpDestination, selectDistinctStmt) ++ stmtClauses)
+    val insertStmt = insertNode(Seq(tmpDestination, selectDistinctStmt) ++ stmtClausesWithouLimitNode)
     // Piece together the subtree starting at a TOK_SUBQUERY node.
     val subqueryAlias = textNode(getDistinctSubqueryAlias(queryId))
     val subquery = subqueryNode(Seq(queryNode(Seq(fromClause, insertStmt)), subqueryAlias))
     // Create and set TOK_FROM as the first child of the root TOK_QUERY.
     val outerFromClause = fromNode(Seq(subquery))
     rootQuery.setChild(0, outerFromClause)
-
+    
     rootQuery
   }
 }
