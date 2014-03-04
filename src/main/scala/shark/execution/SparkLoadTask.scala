@@ -288,7 +288,7 @@ class SparkLoadTask extends HiveTask[SparkLoadWork] with Serializable with LogHe
       pathFilterOpt: Option[PathFilter]) {
     val databaseName = hiveTable.getDbName
     val tableName = hiveTable.getTableName
-    val tableSchema = hiveTable.getMetadata
+    val tableSchema = hiveTable.getSchema
     val serDe = hiveTable.getDeserializer
     serDe.initialize(conf, tableSchema)
     // Scan the Hive table's data directory.
